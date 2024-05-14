@@ -12,18 +12,43 @@ jobs:
         with:
           java-version: '11'
           distribution: 'adopt'
-
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-
       - name: Build with Gradle
         run: ./gradlew build
-
-      - name: Run tests
-        run: ./gradlew test
-
-      - name: Archive production artifacts
-        uses: actions/upload-artifact@v3
+      - name: Run tests and capture results
+        run: ./gradlew test --info
+        continue-on-error: true
+      - name: Save test results
+        if: failure()
+        run: ./gradlew test --info > test_results.txt
+      - name: Notify on Telegram if tests succeed
+        if: success()
+        uses: appleboy/telegram-action@master
         with:
-          name: packaged-artifacts
-          path: build/libs/*.jar
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          args: "All tests passed successfully 🎉"
+      - name: Notify on Telegram if tests fail
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          args: "Some tests failed. Check the logs for more details."
+      - name: Send detailed failure report
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          args: |
+            Failed tests:
+            ${{ steps.failures.outputs.failed-tests }}
+      - name: Prepare detailed test report
+        id: failures
+        if: failure()
+        run: echo "::set-output name=failed-tests::$(grep -E 'FAILED|FAILURE' test_results.txt)"
+
